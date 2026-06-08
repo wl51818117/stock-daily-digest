@@ -703,3 +703,188 @@ def build_stocks_brief(stock_analyses: dict) -> dict:
             "signals": analysis.get("signals", []),
         }
     return stocks_brief
+
+
+# ╔══════════════════════════════════════════════════════╗
+# ║  潜力股扫描                                        ║
+# ╚══════════════════════════════════════════════════════╝
+
+# 扩展观察池：覆盖多个行业的代表性标的
+EXTENDED_WATCHLIST = [
+    {"code": "603099", "name": "长白山"},
+    {"code": "002015", "name": "协鑫能科"},
+    {"code": "002149", "name": "西部材料"},
+    {"code": "002498", "name": "汉缆股份"},
+    # 新能源/电力
+    {"code": "601012", "name": "隆基绿能"},
+    {"code": "300750", "name": "宁德时代"},
+    {"code": "600438", "name": "通威股份"},
+    # 半导体/科技
+    {"code": "002371", "name": "北方华创"},
+    {"code": "688981", "name": "中芯国际"},
+    {"code": "603986", "name": "兆易创新"},
+    # 消费/医药
+    {"code": "000858", "name": "五粮液"},
+    {"code": "600276", "name": "恒瑞医药"},
+    {"code": "300015", "name": "爱尔眼科"},
+    # 金融/地产
+    {"code": "601318", "name": "中国平安"},
+    {"code": "600036", "name": "招商银行"},
+    # 军工/高端制造
+    {"code": "600760", "name": "中航沈飞"},
+    {"code": "601989", "name": "中国重工"},
+    # AI/数字经济
+    {"code": "002230", "name": "科大讯飞"},
+    {"code": "300474", "name": "景嘉微"},
+    {"code": "688111", "name": "金山办公"},
+]
+
+
+def calculate_potential_score(analysis: dict, df: pd.DataFrame) -> dict:
+    """
+    计算潜力评分（0-100）。
+    高分=底部反转或爬升初期、资金关注、估值合理
+    """
+    score = 50  # 基准分
+    reasons = []
+    ind = analysis.get("indicators", {})
+    trend = analysis.get("trend", "")
+    pos = analysis.get("price_position", 50)
+
+    # ── 位置加分：低位区间最有潜力 ──
+    if pos < 20:
+        score += 20
+        reasons.append("处于120日低位，向下空间有限")
+    elif pos < 40:
+        score += 12
+        reasons.append("处于中低位区间")
+    elif pos > 80:
+        score -= 15
+        reasons.append("处于120日高位，追高风险较大")
+
+    # ── 趋势加分：底部/上升期最好 ──
+    if trend == "底部":
+        score += 18
+        reasons.append("技术面显示底部特征，关注反转")
+    elif trend == "上升期":
+        if pos < 50:
+            score += 15
+            reasons.append("上升趋势初期，趋势向好")
+        else:
+            score += 8
+            reasons.append("处于上升趋势中")
+    elif trend == "回调期":
+        if pos < 40:
+            score += 5
+            reasons.append("回调至低位，可能迎来反弹")
+        else:
+            score -= 5
+
+    # ── RSI 加分：超卖区最有反弹潜力 ──
+    rsi14 = ind.get("rsi14", 50)
+    if rsi14 < 30:
+        score += 12
+        reasons.append(f"RSI={rsi14:.0f} 超卖区域，技术反弹需求强")
+    elif rsi14 < 40:
+        score += 6
+        reasons.append(f"RSI={rsi14:.0f} 偏弱但接近超卖")
+
+    # ── 量能加分：放量说明资金关注 ──
+    vol_ratio = ind.get("vol_ratio", 1)
+    if vol_ratio > 1.5:
+        score += 8
+        reasons.append(f"成交量放大({vol_ratio:.1f}倍)，资金关注度高")
+    elif vol_ratio > 1.2:
+        score += 4
+
+    # ── ADX：趋势形成加分 ──
+    adx = ind.get("adx", 0)
+    if 20 < adx < 40:
+        score += 5
+        reasons.append(f"ADX={adx:.0f} 趋势正在形成")
+
+    # ── MACD 改善加分 ──
+    dif = ind.get("dif", 0)
+    dea = ind.get("dea", 0)
+    if dif > dea and dif > 0:
+        score += 5
+        reasons.append("MACD金叉状态，动能向上")
+
+    # ── 均线加分 ──
+    ma20 = ind.get("ma20", 0)
+    ma60 = ind.get("ma60", 0)
+    close = ind.get("latest_close", 0)
+    if close > ma20 > ma60:
+        score += 5
+        reasons.append("均线多头排列，中期趋势向好")
+
+    return {
+        "score": min(max(score, 0), 100),
+        "reasons": reasons,
+        "trend": trend,
+        "price_position": pos,
+        "latest_close": close,
+        "indicators": ind,
+    }
+
+
+def scan_potential_stocks() -> list[dict]:
+    """扫描扩展观察池，筛选潜力股（底部回升/爬升初期/资金关注）"""
+    log.info("扫描潜力股（扩展池 %d 只）...", len(EXTENDED_WATCHLIST))
+    candidates = []
+
+    for s in EXTENDED_WATCHLIST:
+        df = fetch_stock_history(s["code"])
+        if df is None or df.empty or len(df) < 30:
+            continue
+        analysis = classify_trend(df)
+        potential = calculate_potential_score(analysis, df)
+        candidates.append({
+            "code": s["code"],
+            "name": s["name"],
+            "trend": analysis["trend"],
+            "confidence": analysis["confidence"],
+            "potential_score": potential["score"],
+            "potential_reasons": potential["reasons"],
+            "indicators": {
+                "latest_close": potential["latest_close"],
+                "rsi14": potential["indicators"].get("rsi14", 0),
+                "adx": potential["indicators"].get("adx", 0),
+                "vol_ratio": potential["indicators"].get("vol_ratio", 1),
+                "pct_20d": analysis.get("pct_20d", 0),
+            },
+            "price_position": potential["price_position"],
+        })
+        time.sleep(0.3)
+
+    # 按潜力评分排序，取前 5
+    candidates.sort(key=lambda x: x["potential_score"], reverse=True)
+    top = candidates[:5]
+    log.info("潜力 TOP5: %s", ", ".join(
+        f"{c['name']}({c['potential_score']}分/{c['trend']})" for c in top
+    ))
+    return top
+
+
+def collect_all_data() -> tuple:
+    """完整数据采集，返回 (index_data, market_stats, sector_flow, global_ctx, stock_data, potential_stocks)"""
+    index_data = fetch_index_data()
+    market_stats = fetch_market_stats()
+    sector_flow = fetch_sector_flow()
+    global_ctx = fetch_global_context()
+
+    stock_data = {}
+    for s in TRACKED_STOCKS:
+        log.info("  获取 %s(%s)...", s["name"], s["code"])
+        df = fetch_stock_history(s["code"])
+        if df is not None and not df.empty and len(df) > 30:
+            stock_data[s["name"]] = df
+            log.info("    获取 %d 条数据", len(df))
+        else:
+            log.warning("    %s 数据不足", s["name"])
+        time.sleep(0.5)
+
+    # 扫描潜力股
+    potential_stocks = scan_potential_stocks()
+
+    return index_data, market_stats, sector_flow, global_ctx, stock_data, potential_stocks
