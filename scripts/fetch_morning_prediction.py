@@ -67,9 +67,9 @@ def build_prediction_prompt(index_data, market_stats, sector_flow, global_ctx,
 1. **隔夜传导**：美股/VIX/黄金/原油对A股开盘的影响（2-3句话，说清楚多空方向）
 2. **大盘预判**：今日上证可能怎么走（1-2句话，用普通话说）
 3. **个股预判**：每只2-3句话，包含：
-   - 今日方向倾向（偏多/偏空/震荡）和理由
-   - 关键价位（压力位、支撑位）
-   - 「小白建议」：用最直白的话说今天该干嘛，比如"今天先观望，如果放量突破XX可以考虑"、"短期还在跌，别急着抄底，等企稳信号"
+   - 今日方向倾向和理由、关键价位
+   - 「小白建议」：最直白的话说今天该干嘛
+   - 「做T建议」：判断今天是否适合做T。适合给买卖价位，不适合说原因
 4. **潜力推荐**：从候选池选1-2只，说明为什么今天值得关注。用小白能听懂的话解释逻辑。
 5. **风险备忘**：今天最该警惕的1件事
 
@@ -78,7 +78,7 @@ def build_prediction_prompt(index_data, market_stats, sector_flow, global_ctx,
   "overnight_impact": "...",
   "market_outlook": "...",
   "stocks": [
-    {"name": "长白山", "bias": "偏多", "analysis": "...", "resistance": "40", "support": "35", "beginner_advice": "..."}
+    {"name": "长白山", "bias": "偏多", "analysis": "...", "resistance": "40", "support": "35", "beginner_advice": "...", "daytrade": "适合，回踩35低吸，反弹40高抛"}
   ],
   "pick": {"name": "XXX", "code": "000001", "reason": "..."},
   "risk_memo": "..."
@@ -107,13 +107,14 @@ def build_prediction_email(ai_result, stock_analyses):
         ind = analysis.get("indicators", {})
         machine_trend = analysis.get("trend", "平稳期")
 
-        ai_bias, ai_text, ai_advice, ai_res, ai_sup = "震荡", "", "", "", ""
+        ai_bias, ai_text, ai_advice, ai_daytrade, ai_res, ai_sup = "震荡", "", "", "", "", ""
         if ai_result:
             for ai_s in ai_result.get("stocks", []):
                 if ai_s.get("name") == name:
                     ai_bias = ai_s.get("bias", "震荡")
                     ai_text = ai_s.get("analysis", "")
                     ai_advice = ai_s.get("beginner_advice", "")
+                    ai_daytrade = ai_s.get("daytrade", "")
                     ai_res = ai_s.get("resistance", "")
                     ai_sup = ai_s.get("support", "")
                     break
@@ -130,6 +131,9 @@ def build_prediction_email(ai_result, stock_analyses):
         advice_html = ""
         if ai_advice:
             advice_html = f'<div style="margin-top:8px;background:#f0fdf4;border-radius:6px;padding:8px 12px;font-size:13px;color:#166534;"><b>💬 小白建议：</b>{ai_advice}</div>'
+        daytrade_html = ""
+        if ai_daytrade:
+            daytrade_html = f'<div style="margin-top:6px;background:#eff6ff;border-radius:6px;padding:8px 12px;font-size:13px;color:#1e40af;"><b>🔁 做T参考：</b>{ai_daytrade}</div>'
 
         stock_cards += f"""
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin-bottom:14px;border-left:4px solid {colors['text']};">
@@ -145,6 +149,7 @@ def build_prediction_email(ai_result, stock_analyses):
             <div style="margin-bottom:6px;">{levels_html}</div>
             <p style="margin:6px 0 0;color:#374151;font-size:13px;line-height:1.6;">{ai_text if ai_text else '（待 AI 分析）'}</p>
             {advice_html}
+            {daytrade_html}
         </div>"""
 
     # ── 潜力推荐 ──

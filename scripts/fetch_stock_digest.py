@@ -64,7 +64,9 @@ def build_review_prompt(index_data, market_stats, sector_flow, global_ctx,
 1. **大盘概况**：2-3句话，用人话解释今天发生了什么
 2. **资金风向**：2-3句话，钱在往哪走
 3. **全球视角**：1-2句话
-4. **个股分析**：每只2-3句话，技术面+关键价位。最后加一句「小白建议」：用最直白的话告诉持有者该怎么办，例如"这个位置不建议追高，等回调到XX附近再看"、"已经在底部区域了，可以分批关注但别一把梭"
+4. **个股分析**：每只2-3句话，技术面+关键价位。再加两个建议：
+   - 「小白建议」：最直白的话告诉持有者该怎么办
+   - 「做T建议」：判断今天是否适合做T。如果适合，给出低吸价位和高抛价位（参考布林带上下轨或支撑压力位）。如果不适合，说明原因（如"波动太小"、"单边下跌不宜做T"）
 5. **潜力推荐**：从候选池中选1-2只最有潜力的，写推荐理由。重点看：是否从底部开始回升、是否在爬升初期、是否有资金关注、长期价值如何。用小白能听懂的话解释为什么看好。
 6. **风险提示**：1句话
 
@@ -74,7 +76,7 @@ def build_review_prompt(index_data, market_stats, sector_flow, global_ctx,
   "fund_flow": "...",
   "global_view": "...",
   "stocks": [
-    {"name": "长白山", "trend": "上升期", "analysis": "...", "beginner_advice": "..."}
+    {"name": "长白山", "trend": "上升期", "analysis": "...", "beginner_advice": "...", "daytrade": "适合/不适合，回踩XX低吸，反弹XX高抛"}
   ],
   "pick": {"name": "XXX", "code": "000001", "reason": "..."},
   "risk_warning": "..."
@@ -101,13 +103,14 @@ def build_review_email(ai_result, stock_analyses):
         machine_trend = analysis.get("trend", "平稳期")
         machine_conf = analysis.get("confidence", 0)
 
-        ai_trend, ai_text, ai_advice = machine_trend, "", ""
+        ai_trend, ai_text, ai_advice, ai_daytrade = machine_trend, "", "", ""
         if ai_result:
             for ai_s in ai_result.get("stocks", []):
                 if ai_s.get("name") == name:
                     ai_trend = ai_s.get("trend", machine_trend)
                     ai_text = ai_s.get("analysis", "")
                     ai_advice = ai_s.get("beginner_advice", "")
+                    ai_daytrade = ai_s.get("daytrade", "")
                     break
 
         colors = TREND_COLORS.get(ai_trend, TREND_COLORS["平稳期"])
@@ -125,6 +128,9 @@ def build_review_email(ai_result, stock_analyses):
         advice_html = ""
         if ai_advice:
             advice_html = f'<div style="margin-top:8px;background:#f0fdf4;border-radius:6px;padding:8px 12px;font-size:13px;color:#166534;"><b>💬 小白建议：</b>{ai_advice}</div>'
+        daytrade_html = ""
+        if ai_daytrade:
+            daytrade_html = f'<div style="margin-top:6px;background:#eff6ff;border-radius:6px;padding:8px 12px;font-size:13px;color:#1e40af;"><b>🔁 做T参考：</b>{ai_daytrade}</div>'
 
         stock_cards += f"""
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin-bottom:14px;border-left:4px solid {colors['text']};">
@@ -137,6 +143,7 @@ def build_review_email(ai_result, stock_analyses):
             <div style="margin-bottom:6px;">{indicators_html}</div>
             <p style="margin:6px 0 0;color:#374151;font-size:13px;line-height:1.6;">{ai_text if ai_text else '（待 AI 分析）'}</p>
             {advice_html}
+            {daytrade_html}
         </div>"""
 
     # ── 潜力推荐卡片 ──
