@@ -33,11 +33,15 @@ LOOKBACK_DAYS = 120
 DEEPSEEK_MODEL = "deepseek-chat"
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
-EMAIL = {k: os.getenv(k, "") for k in [
-    "EMAIL_SMTP_SERVER", "EMAIL_SMTP_PORT", "EMAIL_USER",
-    "EMAIL_PASSWORD", "EMAIL_TO", "EMAIL_FROM"
-]}
-EMAIL["SMTP_PORT"] = int(EMAIL.get("EMAIL_SMTP_PORT") or "587")
+# QQ邮箱 SMTP 配置固定，只需填 3 个 Secrets
+EMAIL = {
+    "SMTP_SERVER": "smtp.qq.com",
+    "SMTP_PORT": 587,
+    "USER": os.getenv("EMAIL_USER", ""),
+    "PASSWORD": os.getenv("EMAIL_PASSWORD", ""),
+    "TO": os.getenv("EMAIL_TO", ""),
+    "FROM": os.getenv("EMAIL_USER", ""),  # 发件人=收件人，QQ邮箱要求一致
+}
 
 TREND_COLORS = {
     "上升期":   {"bg": "#fef2f2", "text": "#dc2626", "icon": "🔴"},
@@ -620,7 +624,7 @@ def call_deepseek(system: str, user: str) -> Optional[dict]:
 
 def send_email(html: str, subject: str):
     """发送邮件"""
-    required = ["EMAIL_SMTP_SERVER", "EMAIL_USER", "EMAIL_PASSWORD", "EMAIL_TO", "EMAIL_FROM"]
+    required = ["USER", "PASSWORD", "TO"]
     missing = [k for k in required if not EMAIL.get(k)]
     if missing:
         log.warning("邮件配置不完整，缺少: %s。跳过发送。", ", ".join(missing))
@@ -629,19 +633,19 @@ def send_email(html: str, subject: str):
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = EMAIL["EMAIL_FROM"]
-    msg["To"] = EMAIL["EMAIL_TO"]
+    msg["From"] = EMAIL["FROM"]
+    msg["To"] = EMAIL["TO"]
     msg.attach(MIMEText(subject + "\n\n请查看 HTML 邮件。", "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    port = int(EMAIL["EMAIL_SMTP_PORT"])
-    s = smtplib.SMTP_SSL(EMAIL["EMAIL_SMTP_SERVER"], port, timeout=30) if port == 465 else smtplib.SMTP(EMAIL["EMAIL_SMTP_SERVER"], port, timeout=30)
+    port = EMAIL["SMTP_PORT"]
+    s = smtplib.SMTP_SSL(EMAIL["SMTP_SERVER"], port, timeout=30) if port == 465 else smtplib.SMTP(EMAIL["SMTP_SERVER"], port, timeout=30)
     if port != 465:
         s.starttls()
-    s.login(EMAIL["EMAIL_USER"], EMAIL["EMAIL_PASSWORD"])
-    s.sendmail(EMAIL["EMAIL_FROM"], EMAIL["EMAIL_TO"], msg.as_string())
+    s.login(EMAIL["USER"], EMAIL["PASSWORD"])
+    s.sendmail(EMAIL["FROM"], EMAIL["TO"], msg.as_string())
     s.quit()
-    log.info("邮件已发送 → %s", EMAIL["EMAIL_TO"])
+    log.info("邮件已发送 → %s", EMAIL["TO"])
 
 
 def collect_all_data() -> tuple:
